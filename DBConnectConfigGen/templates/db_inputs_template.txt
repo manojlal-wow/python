@@ -1,0 +1,167 @@
+[SAP-ASMDiskGroupUsage-<host>-<db>]
+connection = <connection_prefix>_<host>-<db>
+description = Check the space usage ASM Disk Groups DATA,RECO, ARCH, ACFS,MLOG,OLOG etc in ORACLE database.
+disabled = 0
+host = <host>
+index = <index>
+index_time_mode = current
+interval = 300
+mode = batch
+query = SELECT\
+  NAME GROUP_NAME,\
+  STATE STATE,\
+  TYPE TYPE,\
+  TOTAL_MB TOTAL_MB,\
+  (TOTAL_MB - FREE_MB) USED_MB,\
+  ROUND((1 - (FREE_MB / TOTAL_MB)) * 100, 2) PCT_USED\
+FROM\
+  V$ASM_DISKGROUP\
+ORDER BY\
+  NAME;
+sourcetype = oracle:asmdiskgroupusage
+
+[SAP-BlockedObjectSessions-<host>-<db>]
+connection = <connection_prefix>_<host>-<db>
+description = Check the number of locking or blocking sessions in the database and how long it waited for in ORACLE database.
+disabled = 0
+host = <host>
+index = <index>
+index_time_mode = current
+interval = 900
+mode = batch
+query = SELECT s1.username || '@' || s1.machine || ' ( SID=' || s1.sid || ', SERIAL#=' || s1.serial# || ' ) is blocking ' || s2.username || '@' || s2.machine || ' ( SID=' || s2.sid || ', SERIAL#=' || s2.serial# || ' ) on object ' || obj.owner || '.' || obj.object_name AS blocking_status, l1.ctime FROM v$lock l1, v$session s1, v$lock l2, v$session s2, v$locked_object lo, dba_objects obj WHERE s1.sid=l1.sid AND s2.sid=l2.sid AND l1.BLOCK=1 AND l2.request > 0 AND l1.id1 = l2.id1 AND l1.id2 = l2.id2 AND s1.sid=lo.session_id AND lo.object_id=obj.object_id;
+sourcetype = oracle:lockedobjsession
+
+[SAP-DataguardArchiveGap-<host>-<db>]
+connection = <connection_prefix>_<host>-<db>
+description = Check the dataguard archive gap in ORACLE database.
+disabled = 0
+host = <host>
+index = <index>
+index_time_mode = current
+interval = 300
+mode = batch
+query = SELECT * FROM V$ARCHIVE_GAP;
+sourcetype = oracle:dgarchivegap
+
+[SAP-DataguardStatus-<host>-<db>]
+connection = <connection_prefix>_<host>-<db>
+description = Check the dataguard status to get transport lag in ORACLE database.
+disabled = 0
+host = <host>
+index = <index>
+index_time_mode = current
+interval = 300
+mode = batch
+query = SELECT NAME,VALUE,DATUM_TIME  FROM V$DATAGUARD_STATS;
+sourcetype = oracle:dataguardstatus
+
+[SAP-DgStatus-<host>-<db>]
+connection = <connection_prefix>_<host>-<db>
+description = Check the dataguard status in ORACLE database.
+disabled = 0
+host = <host>
+index = <index>
+index_time_mode = current
+interval = 300
+mode = batch
+query = SELECT * FROM SYS.SPLUNK_DG_STATUS;
+sourcetype = oracle:dgstatus
+
+[SAP-DBStatus-<host>-<db>]
+connection = <connection_prefix>_<host>-<db>
+description = Collect Oracle database information
+disabled = 0
+host = <host>
+index = <index>
+index_time_mode = current
+interval = 60
+mode = batch
+query = SELECT * FROM V$DATABASE
+sourcetype = oracle:database
+
+[SAP-LongRunningSessions-<host>-<db>]
+connection = <connection_prefix>_<host>-<db>
+description = Check long running operations in ORACLE database.
+disabled = 0
+host = <host>
+index = <index>
+index_time_mode = current
+interval = 1800
+mode = batch
+query = select  l.sid, l.username, u.process, u.osuser, l.opname, l.elapsed_seconds, l.time_remaining, substr(s.sql_text,1,250) as sql_text\
+from v$session_longops l, v$sqlarea s, v$session u where s.hash_value=l.sql_hash_value and s.address = l.sql_address and l.sid = u.sid and l.elapsed_seconds/60 > 180;
+sourcetype = oracle:longopssession
+
+[SAP-RMANBackUpStatus-<host>-<db>]
+connection = <connection_prefix>_<host>-<db>
+description = Check the status of RMAN Backup Job in ORACLE database.
+disabled = 0
+host = <host>
+index = <index>
+index_time_mode = current
+interval = 1 * * * *
+mode = batch
+query = select * from SYS.SPLUNK_CHK_BACKUP;
+sourcetype = oracle:rmanbackupstatus
+
+[SAP-TotalFlashRecUsage-<host>-<db>]
+connection = <connection_prefix>_<host>-<db>
+description = Check the space usage of recovery area in ORACLE database.
+disabled = 0
+host = <host>
+index = <index>
+index_time_mode = current
+interval = 2 * * * *
+mode = batch
+query = select sum(PERCENT_SPACE_USED) AS TOTAL_PERCENT_SPACE_USED FROM V$FLASH_RECOVERY_AREA_USAGE ;
+sourcetype = oracle:flashrecusagetotal
+
+[SAP-TableSpacesInfo-<host>-<db>]
+connection = <connection_prefix>_<host>-<db>
+description = Check the tablespace space and status info in ORACLE database.
+disabled = 0
+host = <host>
+index = <index>
+index_time_mode = current
+interval = 3 * * * *
+mode = batch
+query = SELECT * FROM (SELECT  TBS.TABLESPACE_NAME,TBS.STATUS,\
+        TOT.BYTES/1024/1024 TOTAL,\
+        TOT.BYTES/1024/1024-SUM(NVL(FRE.BYTES,0))/1024/1024 USED,\
+        SUM(NVL(FRE.BYTES,0))/1024/1024 FREE,\
+        MAX(FRE.BYTES/1024/1024) LARGEST_SPACE,\
+        ROUND((1-SUM(NVL(FRE.BYTES,0))/TOT.BYTES)*100,2) PCT\
+FROM    DBA_FREE_SPACE FRE,\
+        (SELECT TABLESPACE_NAME, SUM(BYTES) BYTES\
+        FROM    DBA_DATA_FILES\
+        GROUP BY TABLESPACE_NAME) TOT,\
+        DBA_TABLESPACES TBS\
+WHERE   TOT.TABLESPACE_NAME    = TBS.TABLESPACE_NAME\
+AND     FRE.TABLESPACE_NAME(+) = TBS.TABLESPACE_NAME\
+GROUP BY TBS.TABLESPACE_NAME,TBS.STATUS,TOT.BYTES/1024/1024, TOT.BYTES) ORDER BY 6 DESC;
+sourcetype = oracle:tablespacesinfo
+
+[SAP-UnusableDatafiles-<host>-<db>]
+connection = <connection_prefix>_<host>-<db>
+description = Check the data files not usable in ORACLE database.
+disabled = 0
+host = <host>
+index = <index>
+index_time_mode = current
+interval = 300
+mode = batch
+query = SELECT NAME, STATUS FROM V$DATAFILE WHERE UPPER(STATUS) NOT IN ('ONLINE','SYSTEM');
+sourcetype = oracle:unusabledatafiles
+
+[SAP-UnusableIndexes-<host>-<db>]
+connection = <connection_prefix>_<host>-<db>
+description = Check the unusable indexes in ORACLE database.
+disabled = 0
+host = <host>
+index = <index>
+index_time_mode = current
+interval = 4 * * * *
+mode = batch
+query = SELECT INDEX_NAME,OWNER,TABLE_OWNER,TABLE_NAME,STATUS FROM DBA_INDEXES WHERE UPPER(STATUS) NOT  IN ('VALID','N/A');
+sourcetype = oracle:unusableindexes
