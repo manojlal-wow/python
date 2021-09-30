@@ -1,0 +1,11 @@
+[<connection_prefix>_<host>-<db>]
+connection_type = oracle
+database = <db>
+disabled = 0
+fetch_size = 1000
+host = <host>.wowcorp.com.au
+identity = <identity>
+jdbcUseSSL = false
+localTimezoneConversionEnabled = false
+port = 1527
+readonly = true
